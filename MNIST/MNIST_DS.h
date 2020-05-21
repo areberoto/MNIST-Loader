@@ -24,4 +24,6 @@ public:
 	~MNIST_DS();
 	void load();
 	int reverseInt(int i);
+	Matrix getImage(int index);
+	int getLabel(int index);
 };

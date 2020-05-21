@@ -82,7 +82,7 @@ void MNIST_DS::loadImages(string set) {
 //Load labels
 void MNIST_DS::loadLabels(string set) {
     unsigned char pixel{ 0 };
-    unsigned char* label_dat_set = new unsigned char[number_of_items];
+    label_dat_set = new unsigned char[number_of_items];
 
     if (NULL != label_dat_set) {
         cout << "Loading data set of " << set << " labels..." << endl;
@@ -108,4 +108,14 @@ int MNIST_DS::reverseInt(int i) {
     ch3 = (i >> 16) & 255;
     ch4 = (i >> 24) & 255;
     return((int)ch1 << 24) + ((int)ch2 << 16) + ((int)ch3 << 8) + ch4;
+}
+
+//Get image
+Matrix MNIST_DS::getImage(int index) {
+    return image_dat_set[index];
+}
+
+//Get label
+int MNIST_DS::getLabel(int index) {
+    return static_cast<int>(label_dat_set[index]);
 }
