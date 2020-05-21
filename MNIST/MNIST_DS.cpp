@@ -2,6 +2,8 @@
 #include <string>
 #include <fstream>
 #include "Matrix.h"
+#include <ctime>
+#include <cstdlib>
 #include "MNIST_DS.h"
 
 using std::endl;
@@ -13,44 +15,51 @@ using std::ios;
 using std::cerr;
 
 //Constructor
-MNIST_DS::MNIST_DS(string name) 
-	: fileName{ name }, n{ 0 }, m{ 0 }, magic_number{ 0 }, number_of_items{ 0 }, image_dat_set{ nullptr },
-    label_dat_set{ nullptr }, inFile{ name, ios::in | ios::binary | ios::ate } {
+MNIST_DS::MNIST_DS(bool flag) 
+    : train{ flag }, n{ 0 }, m{ 0 }, magic_number{ 0 }, number_of_items{ 0 }, image_dat_set{ nullptr },
+    label_dat_set{ nullptr }, mini_batch_size{ 0 }, mini_batch_images{ nullptr }, mini_batch_labels{ nullptr } {
 
-	if (!inFile) {
-		cerr << "Error trying to open the file!\n" << endl;
-		exit(1);
-	}
-
-    ifstream::pos_type size = inFile.tellg();
-    inFile.seekg(0, ios::beg);
+    srand(time(NULL));
+    load();
 }
 
 //Destructor
 MNIST_DS::~MNIST_DS(){
 	delete[] image_dat_set;
 	delete[] label_dat_set;
+    delete[] mini_batch_images;
+    delete[] mini_batch_labels;
 }
 
 //Load data
 void MNIST_DS::load() {
-	inFile.read(reinterpret_cast<char*>(&magic_number), sizeof(int));
-	magic_number = reverseInt(magic_number);
-	inFile.read(reinterpret_cast<char*>(&number_of_items), sizeof(int));
-	number_of_items = reverseInt(number_of_items);
+    string nameImagesFile{};
+    string nameLabelsFile{};
 
-    if (magic_number == 2051 && number_of_items == 60000)
-        loadImages(string{ "training" });
-    else if (magic_number == 2051 && number_of_items == 10000)
-        loadImages(string{ "test" });
-    else if (magic_number == 2049 && number_of_items == 60000) 
-        loadLabels(string{ "training" });
-    else
-        loadLabels(string{ "test" });
-}
+    if (train) {
+        nameImagesFile = "train-images.idx3-ubyte";
+        nameLabelsFile = "train-labels.idx1-ubyte";
+    }
+    else {
+        nameImagesFile = "t10k-images.idx3-ubyte";
+        nameLabelsFile = "t10k-labels.idx1-ubyte";
+    }
 
-//Load images
-void MNIST_DS::loadImages(string set) {
+    //Read images
+    ifstream inFile{ nameImagesFile, ios::in | ios::binary | ios::ate };
+
+    if (!inFile) {
+        cerr << "Error trying to open the file!\n" << endl;
+        exit(1);
+    }
+
+    ifstream::pos_type size = inFile.tellg();
+    inFile.seekg(0, ios::beg);
+
+    inFile.read(reinterpret_cast<char*>(&magic_number), sizeof(int));
+    magic_number = reverseInt(magic_number);
+    inFile.read(reinterpret_cast<char*>(&number_of_items), sizeof(int));
+    number_of_items = reverseInt(number_of_items);
     inFile.read(reinterpret_cast<char*>(&n), sizeof(int));
     n = reverseInt(n);
     inFile.read(reinterpret_cast<char*>(&m), sizeof(int));
@@ -61,7 +70,7 @@ void MNIST_DS::loadImages(string set) {
     image_dat_set = new Matrix[number_of_items];
 
     if (NULL != image_dat_set) {
-        cout << "Loading data set of " << set << " images..." << endl;
+        cout << "Loading data set of training images..." << endl;
         for (size_t i{ 0 }; i < number_of_items; i++) {
             for (size_t j{ 0 }; j < n * m; j++) {
                 inFile.read(reinterpret_cast<char*>(&pixel), sizeof(unsigned char));
@@ -75,20 +84,33 @@ void MNIST_DS::loadImages(string set) {
         exit(1);
     }
 
-    cout << "Finished loading data set of " << set << " images..." << endl;
+    cout << "Finished loading data set of training images..." << endl;
     inFile.close();
-}
 
-//Load labels
-void MNIST_DS::loadLabels(string set) {
-    unsigned char pixel{ 0 };
+    //Read labels
+    ifstream inLabels{ nameLabelsFile, ios::in | ios::binary | ios::ate };
+
+    if (!inLabels) {
+        cerr << "Error trying to open the file!\n" << endl;
+        exit(1);
+    }
+
+    size = inLabels.tellg();
+    inLabels.seekg(0, ios::beg);
+
+    inLabels.read(reinterpret_cast<char*>(&magic_number), sizeof(int));
+    magic_number = reverseInt(magic_number);
+    inLabels.read(reinterpret_cast<char*>(&number_of_items), sizeof(int));
+    number_of_items = reverseInt(number_of_items);
+
+    unsigned char label{ 0 };
     label_dat_set = new unsigned char[number_of_items];
 
     if (NULL != label_dat_set) {
-        cout << "Loading data set of " << set << " labels..." << endl;
+        cout << "\nLoading data set of training labels..." << endl;
         for (size_t i{ 0 }; i < number_of_items; i++) {
-            inFile.read(reinterpret_cast<char*>(&pixel), sizeof(unsigned char));
-            label_dat_set[i] = pixel;
+            inLabels.read(reinterpret_cast<char*>(&label), sizeof(unsigned char));
+            label_dat_set[i] = label;
         }
     }
     else {
@@ -96,8 +118,8 @@ void MNIST_DS::loadLabels(string set) {
         exit(1);
     }
 
-    cout << "Finished loading data set of " << set << " labels..." << endl;
-    inFile.close();
+    cout << "Finished loading data set of training labels..." << endl;
+    inLabels.close();
 }
 
 //Convert raw bytes to int
@@ -118,4 +140,40 @@ Matrix MNIST_DS::getImage(int index) {
 //Get label
 int MNIST_DS::getLabel(int index) {
     return static_cast<int>(label_dat_set[index]);
+}
+
+//Create mini_batch
+void MNIST_DS::randomSet(int n) {
+    mini_batch_size = n;
+    int* index_array = new int[mini_batch_size];
+
+    //Optimize for different numbers
+    for (size_t i{ 0 }; i < mini_batch_size; i++)
+        index_array[i] = rand() % (number_of_items + 1);
+
+    if (NULL != mini_batch_images)
+        delete[] mini_batch_images;
+    if (NULL != mini_batch_labels)
+        delete[] mini_batch_labels;
+
+    mini_batch_images = new Matrix[mini_batch_size];
+    mini_batch_labels = new unsigned char[mini_batch_size];
+    if (NULL != mini_batch_images && NULL != mini_batch_labels) {
+        for (size_t i{ 0 }; i < mini_batch_size; i++) {
+            mini_batch_images[i] = getImage(index_array[i]);
+            mini_batch_labels[i] = getLabel(index_array[i]);
+        }
+    }
+    else {
+        cerr << "Error trying to allocate dynamic memory!\n" << endl;
+        exit(1);
+    }
+}
+
+Matrix* MNIST_DS::getMiniBatchImages() {
+    return mini_batch_images;
+}
+
+unsigned char* MNIST_DS::getMiniBatchLabels() {
+    return mini_batch_labels;
 }

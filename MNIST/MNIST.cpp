@@ -10,22 +10,24 @@ using std::endl;
 using std::string;
 
 int main(){
-    //string fileName = "train-images.idx3-ubyte";
-    //string fileName = "train-labels.idx1-ubyte";
-    string fileImage = "t10k-images.idx3-ubyte";
-    string fileLabel = "t10k-labels.idx1-ubyte";
 
-    MNIST_DS data_set{ fileImage };
-    MNIST_DS label_set{ fileLabel };
-    data_set.load();
-    label_set.load();
+    //If true, training data is loaded, else test data
+    MNIST_DS data_set{ false };
 
     Matrix image{ data_set.getImage(0) };
-    int label{ label_set.getLabel(0) };
+    int label{ data_set.getLabel(0) };
     
     cout << "Print first image: " << endl;
     cout << image << endl;
     cout << "Print label of image: " << label << endl;
 
+    cout << "Print random mini batch: " << endl;
+    data_set.randomSet(10);
+
+    for (size_t i{ 0 }; i < 10; i++) {
+        cout << data_set.getMiniBatchImages()[i] << endl;
+        cout << "Label: " << (int) data_set.getMiniBatchLabels()[i] << endl;
+    }
+    
     return 0;
 }
